@@ -1,0 +1,96 @@
+var pole='0x0DBF'
+
+function Main()
+{
+	while(true)
+	{
+		Fish();
+		Orion.Wait(500);
+	}
+}
+
+function Fish()
+{
+    if (!Orion.ScriptRunning('WatchSerpent'))
+            Orion.Exec('WatchSerpent');
+	for(var j=-3;j<3;j++)
+	{
+		CheckWeight();
+		for(var i=2;i<12;i++)
+		{
+			Orion.Print("Fishing on: ");
+			Orion.Print("X: " + (Player.X()+i));
+			Orion.Print("Y: " + (Player.Y()+j));
+			var Start=Orion.Now();
+			Orion.ClearJournal();
+			var fish = false;
+			
+			while(fish == false)
+			{
+				fish = UsePole(Player.X()+i,Player.Y()+j, -5);
+			}
+		}
+	}
+	MoveBoat(Player.X(), Player.Y());
+
+}
+
+function MoveBoat(x,y)
+{
+	Orion.Say('Raise Anchor');
+	Orion.Say('Full Forward');
+	Orion.Say('Full Forward');
+	Orion.Wait(5000);
+	Orion.Say('Drop Anchor');
+}
+
+function UsePole(x,y,z)
+{
+	var Start=Orion.Now();
+			Orion.ClearJournal();
+			Orion.UseType(pole);
+			if(Orion.WaitForTarget(3000))
+				Orion.TargetTile('any', x, y, z);
+			Orion.WaitJournal("You can't fish there|Oh.. the fish got away|You catch a nice fish!",Start,Orion.Now()+2000);
+			
+			var result = Orion.WaitJournal("That is too far|There doesn't seem|any more fish here|That location is not|your line of sight|You can't fish there",Start,Orion.Now()+1000);
+
+		if(result == null)
+			return false;
+			else return true;
+}
+
+function CheckWeight(){
+    if(Player.Weight() > 700)
+    {
+        var fish = Orion.FindType('0x09CE|0x09CC|0x09CD', '0xFFFF', 'backpack');
+        Orion.Print(fish)
+        fish.forEach(function(x)
+        {
+            CutRawFish();
+        })
+
+    }
+}
+
+function CutRawFish()
+{
+  var items = Orion.FindType('0x09CC|0x09CE|0x09CD', '0x0000', 'backpack')
+  for (var i = 0; i < items.length; i++)
+  {
+    Orion.UseType('0x0F51');
+    if(Orion.WaitForTarget(10000))
+      Orion.TargetObject(items[i]);
+
+    Orion.Wait(1000);
+  }
+}
+
+function WatchSerpent(){
+
+    while(true){
+        var result = Orion.WaitJournal("Your pyroxene armor|firebreather damage",Orion.Now()-3000,Orion.Now()+2000);
+        if (result)
+            MoveBoat();
+    }
+}

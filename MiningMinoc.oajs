@@ -1,0 +1,502 @@
+var DebugInd = 0
+var LastPosX
+var LastPosY
+var HeadingToBankInd = 0
+var Jewel = '0x1085|0x1086|0x1087|0x1088|0x1089|0x108A'
+var MsgColor = '0x0030' // '0x00E9' //'0x001C'
+//===============================================================
+// You can change to following values
+//===============================================================
+var MaxWeight = 350  //It will smelt and bank ingots when your weight will reach this value
+var SmeltOreInd = 0 // 1 or 0. If = 0, it will bank ores without smelting them
+var AutoStoreValuableOre = 1 //
+//===============================================================
+
+function MinocMining()
+{
+	Orion.ToggleScript('MiningCheckForPlayers', true)
+	while (true)
+	{
+		CheckWeight();
+		MoveRandomTile();
+		MineLoop();
+	}
+}
+
+function MiningCheckForPlayers()
+{
+	while (true)
+	{
+		var CurrentWeight = Player.Weight();
+		var players = Orion.FindType('any', 'any', 'ground', 'live|ignoreself', 20, 'gray|criminal|orange|red')
+		if(players.length != 0)
+		{
+			if(!(Orion.TimerExists('GuardCommand') && Orion.Timer('GuardCommand') < 5000))
+			{
+				Orion.Say('.guard');
+				Orion.Print('Guards Called!');
+				Orion.SetTimer('GuardCommand');
+			}
+		}
+		
+		if(Player.Poisoned() || Player.Hits('%') <= 80)
+		{
+			//Orion.Terminate('MinocMining');
+			MineToForge();
+			
+			//Drink Cure
+			Orion.UseType('0x0F07', '0xFFFF');
+			
+			Orion.Wait(2000);
+			
+			//Drink Heal
+			Orion.UseType('0x0F0C', '0xFFFF');
+			
+			BankJewel();
+		}
+		
+		if(Player.Weight() < CurrentWeight)
+		{
+			if(HeadingToBankInd == 0)
+			{
+				Orion.Say('.thief');
+			}
+		}
+		
+		Orion.Wait(2000);
+	}
+}
+
+function BankJewel()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering BankJewel Function!');
+	var banker = Orion.FindObject('0x006AD44F');
+	
+	HeadingToBankInd = 1;
+	
+	if (!banker)
+		banker = Orion.FindObject('0x0000087A');
+
+	if (Orion.WalkTo(banker.X(), banker.Y(), banker.Z(), 0) == 0)
+		Orion.WalkTo(2565, 522, 15, 0);
+	
+	Orion.UseObject(banker.Serial());
+	Orion.WaitForGump(3000);
+	var gump= Orion.GetLastGump();
+	
+	if (gump != null)
+	gump.Select(Orion.CreateGumpHook(1));  //Bank Box
+	
+	var bankbox = Orion.GetSerial(lastcontainer);
+	
+	Orion.Wait(2000);
+
+	var items = Orion.FindType(Jewel, 'any', 'self')
+	for (var j = 0; j < items.length; j++)
+	{
+		Orion.MoveItem(items[j], 0, bankbox);
+	}
+	Orion.Wait(2000);
+	
+	HeadingToBankInd = 0;
+	}
+
+function MineLoop()
+{
+	var offset = 2;
+	var list = Orion.GetTilesInRect('mine', Player.X() - offset, Player.Y() - offset, Player.X() + offset, Player.Y() + offset);
+	for (var i = 0; i < list.length; i++)
+	{
+		if (DebugInd == 1) Orion.Print('Entering MiningLoop: ' + (i + 1) + '/' + list.length); 
+		var tile = list[i];
+		CheckIfDead()
+		while (true)
+		{
+			if(MineTile(tile.X(), tile.Y()) == 1)
+			{
+				break;
+			}
+		}
+		CheckWeight()
+		CheckIfDead()
+		if (AutoStoreValuableOre == 1) CheckValuableOre();
+	}	
+}
+
+function MineTile(x, y)
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering MineTile Function!');
+	
+	Orion.ClearJournal();
+	var time = Orion.Now()
+	if (DebugInd == 1) Orion.Print('MineTile: ' + x + ', ' + y);
+	Orion.UseType('0x0E85|0x0E86'); //Pickaxe
+	if (Orion.WaitForTarget(10000))
+	Orion.TargetTile('mine', x, y, Player.Z());
+	Orion.Wait(500);
+	Orion.WaitJournal("There is no more ore|There is no ore|You stop mining|You fail to find|That is too far away|is attacking you|You can not mine there|I am dead", time, Orion.Now() + 30000);
+
+	if (Player.Dead())
+	{
+		CheckIfDead()
+	}
+	if (Player.Hits() < Player.MaxHits())
+	{
+		//Orion.Say('.guard');
+		//return 0;
+	}
+	else if (Orion.InJournal("is attacking you"))
+	{
+		//Orion.Say('.guard');
+		//return 0;
+	}
+	else if (Orion.InJournal("There is no more ore|There is no ore|That is too far away|You can not mine there"))
+	{
+		//if (DebugInd == 1) Orion.Print('No more ore');
+		Orion.ClearJournal();
+		return 1;
+	}
+	else if (Orion.InJournal("You stop mining|You fail to find"))
+	{
+		//if (DebugInd == 1) Orion.Print('Stop mining');
+		Orion.ClearJournal();
+		return 0;
+	}		
+	if (DebugInd == 1) Orion.Print('Leaving MineTile Function!');
+	return 0;
+}
+
+function CheckIfDead()
+{
+	if(!Player.Dead())
+		return
+		
+	LastPosX = Player.X();
+	LastPosY = Player.Y();
+	
+	if (DebugInd == 1) Orion.Print('Last Position: ' + Player.X() + ', ' + Player.Y());
+	ReportTheKiller()
+	if (!Player.WarMode()) Orion.WarMode(1);
+	MineToHealer()
+	Resurect()
+	Orion.Wait(1000);
+	var robe = Orion.FindType('0x1F03', '0x0000', 'self');
+	if (robe.length)
+		Orion.MoveItem(robe[0], 1, 'ground', Player.X(), Player.Y(), Player.Z()); 
+	Orion.Wait(1000);
+	BankToMine();
+	Orion.WalkTo(LastPosX, LastPosY, 0, 0);
+}
+
+function ReportTheKiller()
+{
+	if (Orion.WaitForGump(1000))
+	{
+		var gump0 = Orion.GetGump('last');
+		if ((gump0 !== null) && (!gump0.Replayed()))
+		{
+			var gumpHook0 = Orion.CreateGumpHook(99);
+			gumpHook0.AddCheck(10, true);
+			gump0.Select(gumpHook0);
+			Orion.Wait(100);
+		}
+	}
+}
+
+function Resurect()
+{
+	if (Orion.WaitForGump(1000))
+	{
+		var gump0 = Orion.GetGump('last');
+		if ((gump0 !== null) && (!gump0.Replayed()))
+		{
+			gump0.Select(Orion.CreateGumpHook(1));
+			Orion.Wait(100);
+		}
+	}
+}
+
+function MoveRandomTile()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering MoveRandomTile Function!');
+	
+	var distance = 9;
+	var x = Player.X() + (Orion.Random(distance * 2 + 1) - distance);
+	var y = Player.Y() + (Orion.Random(distance * 2 + 1) - distance);
+	var tiles = Orion.GetTiles('mine', x, y) 
+
+	if (y < 474)
+	{
+		MoveRandomTile();
+	}
+	else if (tiles.length==0)
+	{
+		MoveRandomTile();
+	}
+	else if (tiles.length>0)
+	{
+		//if (DebugInd == 1) Orion.Print(tiles[0].Graphic());
+		if (Orion.WalkTo(x, y, 0, 0) == 0)
+		{
+			MoveRandomTile();
+		}
+	}
+}
+
+function BankToMine()
+{
+	Orion.WalkTo(2564, 486, 0, 0);
+}
+
+function MineToForge()
+{
+	Orion.WalkTo(2572, 522, 15, 0);
+}
+
+function MineToHealer()
+{
+	Orion.WalkTo(2587, 536, 15, 1);
+}
+
+function CheckValuableOre()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering CheckValuableOre Function!');
+	if (Orion.Count('0x19B9', '0x0037|0x0050|0x07FA|0x0808|0x002B|0x07C8', 'backpack') > 0) //Hematite|Dolerite|Rose|Elven|Sun|DarkSilver
+	{
+		if (DebugInd == 1) Orion.Print('0x0021', 'Valuable Ores Found!');
+		StashStuff()
+		return
+	}
+	
+	var ores = Orion.FindType('0x19B9', '0x0023|0x0010', 'backpack')
+	if (ores.length) //Obsi|Coru
+	{
+		for (var i = 0; i < ores.length; i++)
+		{
+			Orion.ClearJournal();
+
+			var obj = Orion.FindObject(ores[i]);
+			Orion.Click(obj.Serial());
+			Orion.Wait(750);
+			
+			var msg = Orion.LastJournalMessage()
+			if (msg)
+			{
+				var idx_obsi = msg.Text().indexOf('obsidean')
+				var idx_coru = msg.Text().indexOf('corundum')
+				
+				if (idx_obsi > 0 || idx_coru > 0)
+				{
+					StashStuff()
+					return
+				}
+			}	
+			Orion.Wait(200);
+		}
+	}
+}
+
+function CheckWeight()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering CheckWeight Function!');
+	if (Player.Weight() >= MaxWeight)
+	{
+		if (DebugInd == 1) Orion.Print('0x0021', 'Max Weight Reached!');
+		StashStuff()
+	}
+}
+
+function StashStuff()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering StashStuff Function!');
+	LastPosX = Player.X();
+	LastPosY = Player.Y();
+	
+	if (DebugInd == 1) Orion.Print('Last Position: ' + Player.X() + ', ' + Player.Y());
+	MineToForge();
+	
+	if (SmeltOreInd != 0)
+		Smelt();
+	
+	BankOresIngots();
+	BankToMine();
+	Orion.WalkTo(LastPosX, LastPosY, 0, 0);
+}
+
+function Smelt()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering Smelt Function!');
+	
+	while (Orion.Count('0x19B9', 'any', 'backpack', 1, 1) > 0)
+	{
+		var ores = Orion.FindType('0x19B9', 'any', 'backpack');
+		if(ores && ores.length > 0)
+		{
+			ores.forEach
+			(
+				function(items)
+				{
+					Orion.UseType('0x19B9');
+					Orion.Wait(2000);
+				}
+			);
+		}
+	}
+}
+
+function BankOresIngots()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering BankOresIngots Function!');
+	var banker = Orion.FindObject('0x006AD44F');
+	
+	HeadingToBankInd = 1;
+	
+	if (!banker)
+		banker = Orion.FindObject('0x0000087A');
+	//Orion.Print(banker.X() + ', ' + banker.Y());
+	if (Orion.WalkTo(banker.X(), banker.Y(), banker.Z(), 0) == 0)
+		Orion.WalkTo(2565, 522, 15, 3);
+	
+	Orion.UseObject(banker.Serial());
+	Orion.WaitForGump(3000);
+	var gump= Orion.GetLastGump();
+	
+	if (gump != null)
+	gump.Select(Orion.CreateGumpHook(1));  //Bank Box
+	
+	var bankbox = Orion.GetSerial(lastcontainer);
+	
+	Orion.Wait(2000);
+
+	var list = ['0x19B9|0x1BF2|0x14ED|0x0F10|0x0F0F|0x0F11|0x0F13|0x0F16|0x0F18|0x0F15|0x0F25|0x0F30'];
+	var items = Orion.FindType(list, 'any', 'backpack');
+	//Orion.Print(items.length);
+	for (var a = 0; a < items.length; a++)
+	{
+		Orion.MoveItem(items[a], 0, bankbox);
+	}
+	Orion.Wait(1000);
+	
+	HeadingToBankInd = 0;
+	
+	//Hunger(Orion.GetSerial(lastcontainer))
+	
+	//Orion.Wait(2000);
+}
+
+
+function MoveCrappyOreFromBankToBackpack()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering BankOresIngots Function!');
+	var banker = Orion.FindObject('0x00A2EF6E');
+	
+	if (!banker)
+		banker = Orion.FindObject('0x00001E81');
+	//Orion.Print(banker.X() + ', ' + banker.Y());
+	if (Orion.WalkTo(banker.X(), banker.Y(), banker.Z(), 0) == 0)
+		Orion.WalkTo(2565, 522, 15, 0);
+	
+	Orion.UseObject(banker.Serial());
+	Orion.WaitForGump(3000);
+	var gump= Orion.GetLastGump();
+	
+	if (gump != null)
+	gump.Select(Orion.CreateGumpHook(1));  //Bank Box
+	
+	var bankbox = Orion.GetSerial(lastcontainer);
+	
+	Orion.Wait(2000);
+
+	var list = ['0x19B9|0x1BF2|0x14ED|0x0F10|0x0F0F|0x0F11|0x0F13|0x0F16|0x0F18|0x0F15|0x0F25|0x0F30'];
+	var items = Orion.FindType(list, 'any', bankbox);
+	//Orion.Print(items.length);
+	for (var a = 0; a < items.length; a++)
+	{
+		var obj = Orion.FindObject(items[a])
+		Orion.Print(obj.Count());
+		if (obj.Count() < 375)
+		{
+			Orion.MoveItem(items[a], 0, 'backpack');
+		}
+	}
+	Orion.Wait(2000);
+	
+	//Hunger(Orion.GetSerial(lastcontainer))
+	
+	//Orion.Wait(2000);
+}
+
+
+function MoveIngotsFromBackpackToSecure()
+{
+	var list = ['0x19B9|0x1BF2|0x14ED|0x0F10|0x0F0F|0x0F11|0x0F13|0x0F16|0x0F18|0x0F15|0x0F25|0x0F30'];
+	var items = Orion.FindType('0x19B9|0x1BF2', 'any', 'backpack');
+	//Orion.Print(items.length);
+	for (var a = 0; a < items.length; a++)
+	{
+		Orion.MoveItem(items[a], 0, 'IngotSecure');
+	}
+}
+
+
+function MoveIngotsFromContaierToContainer()
+{
+	Orion.Print('Select the source container!');
+	Orion.AddObject('temp_src');
+	Orion.WaitWhileTargeting();
+	Orion.OpenContainer('temp_src');
+	Orion.Wait(700);
+	
+	Orion.Print('Select the destination container!');
+	Orion.AddObject('temp_des');
+	Orion.WaitWhileTargeting();
+	Orion.OpenContainer('temp_des');
+	Orion.Wait(700);
+	
+	var list = ['0x19B9|0x1BF2|0x14ED|0x0F10|0x0F0F|0x0F11|0x0F13|0x0F16|0x0F18|0x0F15|0x0F25|0x0F30'];
+	var items = Orion.FindType('0x19B9|0x1BF2', 'any', 'temp_src');
+	//Orion.Print(items.length);
+	for (var a = 0; a < items.length; a++)
+	{
+		Orion.MoveItem(items[a], 0, 'temp_des');
+	}
+}
+
+
+function Hunger(container)
+{
+	if (DebugInd == 1) Orion.Print('Entering Hunger Function!');
+	var Food = '0x09D0' //apples
+	
+	while (true)
+	{
+		Orion.ClearJournal;
+		var time = Orion.Now()
+		Orion.Say('.hunger');
+	
+		Orion.WaitJournal('Your hunger is perfect|watch your weight|three square meals|Your diet is consistent|some food would be welcome|stomach is growling|Are you Anorexic', time, Orion.Now() + 10000);
+	
+		if (Orion.InJournal('Your hunger is perfect|watch your weight|three square meals'))
+		{
+			break
+		}
+		else if (Orion.InJournal('Your diet is consistent|some food would be welcome|stomach is growling|Are you Anorexic'))
+		{
+			Orion.OpenContainer(container, 1000);
+			Orion.Wait(1500);
+			
+			var _foods = Orion.FindType(Food, 'any', container);
+			if(_foods && _foods.length > 0)
+			{
+				_foods.forEach
+				(
+					function(items)
+					{
+						Orion.UseObject(_foods);
+						Orion.Wait(2000);
+					}
+				);
+			}
+		}
+	}
+}

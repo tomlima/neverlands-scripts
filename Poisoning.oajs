@@ -1,0 +1,164 @@
+//===============================================================
+// Script Name: Poisoning Training
+// Version: 1.0
+// Client Tested with: 2.0.0
+// Orion version tested with: 3.0.0.0
+// Shard OSI / FS: FS Neverlands Phoenix
+// Purpose : Training poisoning by using a poison pots stack on the ground. The script don't
+//                manage to switch pots type, you have to switch them manually.  Be sure you
+//						 have only the poison pots you want to use in a radius of 3 tiles.
+// Instructions:	1. Place a stack of poison pots on the ground near you.
+//								2. Place a weapon in your backpack.
+//								3. Start the function named "PoisoningTraining()".
+//===============================================================
+var Bandage = '0x0E21'
+var EmptyBottle = '0x0F0E'
+var MsgColor = '0x0030'
+var PoisonPot = '0x0F0A'
+var DebugInd = 1
+//===============================================================
+// You can change to following values
+//===============================================================
+var PotStack = 50
+var QtyPerBatch = 200
+var SkillDelay = 10
+var MinHp = 70
+//===============================================================
+
+
+function PoisoningTraining()
+{
+	var skillAmount = Orion.SkillValue('Poisoning');
+	Orion.SetTimer('Poisoning', SkillDelay * 1000);
+	SelectWeapon()
+	while (skillAmount<1000)
+	{
+		RestockPots()
+		Poisoning()
+		DropEmptyBottlesOnTheGround()
+		Orion.Wait(1000);
+	}
+}
+
+
+function Poisoning()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering Poisoning Function!'); 
+	while (Orion.Count(PoisonPot, 'any', 'backpack') > 0)
+	{
+		if (Orion.TimerExists('Poisoning') && Orion.Timer('Poisoning') >= SkillDelay * 1000)
+		{
+			Orion.UseSkill('30');
+			if (Orion.WaitForTarget(3000))
+				Orion.TargetType(PoisonPot);
+			if (Orion.WaitForTarget(3000))
+				Orion.TargetObject('TrainingWeapon');
+				
+			Orion.SetTimer('Poisoning');
+			Orion.Wait(1000);
+			CheckHealth()
+		}			
+		Orion.Wait(500);
+	}
+}
+
+
+function CheckHealth()
+{
+	if (Player.Poisoned())
+		Cast('11', 'self', 5000);  // Cast Cure
+
+	Orion.Wait(750);
+	
+	while (Player.Hits() < MinHp)
+	{
+		Cast('29', 'self', 5000); // Cast Greater Heal
+		Orion.Wait(750);
+	}
+}
+
+
+function SelectWeapon()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering SelectWeapon Function!'); 
+	Orion.Print(MsgColor, 'Select your weapons');
+	Orion.AddObject('TrainingWeapon');
+	Orion.WaitWhileTargeting();
+	Orion.Wait(700);
+}
+
+
+function RestockPots()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering RestockPots Function!'); 
+	var QtyOnMe = Orion.Count(PoisonPot, 'any', 'backpack')
+	var QtyFoundGround = Orion.Count(PoisonPot, 'any', 'ground', '', 1)
+	
+	if (QtyOnMe == 0 && QtyFoundGround == 0)
+	{
+		Orion.Print('0x0026', 'You are out of poison pots, script halted!');
+		Orion.Terminate('PoisoningTraining');
+	}
+	
+	if (QtyOnMe < QtyPerBatch && QtyFoundGround > 0)
+	{
+		var x
+		var LoopCount = (QtyPerBatch - QtyOnMe) / PotStack
+		//Orion.Print('LoopCount: ' + LoopCount);
+		for (var i = 1; i <= LoopCount; i++)
+		{
+			x = 30 + (i * 5);
+			var pots = Orion.FindType(PoisonPot, 'any', 'ground', '', 1)
+			if (pots.length != 0)
+			{
+				Orion.MoveItem(pots[0], PotStack, 'backpack', x, 130);
+				Orion.Wait(250);
+			} 
+		}
+	}
+}
+
+
+function Cast(Spell, Target, CastingDelay)
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering Cast Function!'); 
+	while (true)
+	{
+		Orion.ClearJournal;
+		var time = Orion.Now()
+		
+		Orion.Cast(Spell);
+		if (Orion.WaitForTarget(3000))
+			Orion.TargetObject(Target);
+		
+		Orion.WaitJournal('spell fizzles|you_lost your concentration|You healed|been cured of', time, Orion.Now() + CastingDelay);
+		if (Orion.InJournal('spell fizzles|you_lost your concentration', '', '0', 'any', time, Orion.Now()) != null)
+		{
+			break
+		}
+		else if (Orion.InJournal('You healed|cured you', '', '0', 'any', time, Orion.Now()) != null)
+		{
+			return
+		}
+		
+		Orion.Wait(250);
+	}
+}
+
+
+function DropEmptyBottlesOnTheGround()
+{
+	if (DebugInd == 1) Orion.Print(MsgColor, 'Entering DropEmptyBottlesOnTheGround Function!'); 
+	var pots = Orion.FindType(EmptyBottle, 'any', 'backpack')
+	var stack = Orion.FindType(EmptyBottle, 'any', 'ground', '', 3)
+	var dest = Orion.FindObject(stack)
+
+	if (dest != null)
+	{
+		Orion.MoveItem(pots[0], 0, dest.Serial(), dest.X(), dest.Y(), dest.Z());
+	}
+	else
+	{
+		Orion.MoveItem(pots[0], 0, 'ground', Player.X(), Player.Y(), Player.Z());
+	}
+}

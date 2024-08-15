@@ -1,0 +1,137 @@
+//===============================================================
+// Script Name: AnimalTaming
+// Version: 1.0
+// Client Tested with: 2.0.0
+// Orion version tested with: 3.0.0.0
+// Purpose: Training Animal Taming
+// 					The script claim the pet, release it, tame it and stable it.  Over and over again.
+// Instructions: 1. Place the pet deed in your backpack
+//                    2. Start the "AnimalTaming()" function
+// 0 - 33    : Vendor train
+// 53 - 80  : Great Hart
+// 80 - 90  : Glacial Ostard
+// 90 -   : Garden Ostard
+//===============================================================
+var DebugInd = 1
+var Pets = ['0x00CC|0x00D2|0x00DC|0x00EA|0x00E2|0x00DB|0x00E4|0x00C8|0x00ED|0x00E9|0x00D3']
+var PetDeed = '0x14F0|0x14EF'
+var UseStableMaster = 1;
+//-----------------------------------------------------------------
+
+function AnimalTaming()
+{
+	if (UseStableMaster == 1)
+	{
+		Orion.Print('0x0044', 'Select the StableMaster!')
+		Orion.AddObject('StableMaster');
+		Orion.WaitWhileTargeting();
+	}
+
+	while (true)
+	{
+		if (UseStableMaster == 1)
+			PetClaim()
+	
+		ReleasePet()
+		
+		while (true)
+		{
+			if (TamePet() == 1) break;
+		}
+		Orion.Wait(2000);
+	
+		if (UseStableMaster == 1)
+			Stable()
+	}
+}
+
+function PetClaim()
+{
+	if (DebugInd == 1) Orion.Print('Entering PetClaim Function!');
+	var deed = Orion.FindType(PetDeed, -1, 'backpack');
+	if (deed.length == 0)
+	{
+		Orion.Print('0x0021', 'No deed found, script halted!');
+		return
+	}
+	Orion.MoveItem(deed, 1, 'StableMaster');
+	while (true)
+	{
+		var pet = Orion.FindType(Pets, -1, 'ground', 2);
+		if (pet.length > 0)
+			break;
+		
+		Orion.Wait(500);
+	}
+}
+
+function ReleasePet()
+{
+	if (DebugInd == 1) Orion.Print('Entering ReleasePet Function!');
+	while (true)
+	{
+		var pet = Orion.FindType(Pets, -1, 'ground', 2);
+		if (pet.length > 0)
+			break;
+	}
+	
+	Orion.Wait(2000);
+	Orion.Say('all release');
+}
+
+function TamePet()
+{
+	if (DebugInd == 1) Orion.Print('Entering TamePet Function!');
+	var pet = Orion.FindType(Pets, -1, 'ground', 2);
+	
+	if (pet.length == 0)
+	{
+		Orion.Print('0x0021', 'No pet found, script halted!');
+		return
+	}
+	Orion.ClearJournal();
+
+	Orion.UseSkill('35');
+	if (Orion.WaitForTarget(3000))
+		Orion.TargetObject(pet);
+		
+	Orion.WaitJournal("You successfully|become enraged|upset the beast|You failed to tame", Orion.Now(), Orion.Now() + 30000, 'sys');
+
+	if (Orion.InJournal('become enraged|upset the beast', 'my|sys'))
+	{
+		Orion.UseType('0x0DD6');
+		Orion.Wait(2000)
+		return 0
+	}
+	else if (Orion.InJournal('You failed to tame', 'my|sys'))
+	{
+		return 0
+	}
+	return 1
+}
+
+function Stable()
+{
+	if (DebugInd == 1) Orion.Print('Entering Stable Function!');
+	var pet = Orion.FindType(Pets, -1, 'ground', 2);
+	if (pet.length == 0)
+	{
+		Orion.Print('0x0021', 'No pet found, script halted!');
+		return
+	}
+	Orion.UseObject('StableMaster');
+	if (Orion.WaitForGump(3000))
+	{
+		var gump0 = Orion.GetGump('last');
+		if (gump0 !== null)
+		{
+			gump0.Select(Orion.CreateGumpHook(5));
+			Orion.Wait(100);
+		}
+	}
+	
+	if (Orion.WaitForTarget(3000))
+		Orion.TargetObject(pet);
+		
+	Orion.Wait(1250);
+}

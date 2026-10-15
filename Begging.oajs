@@ -1,0 +1,108 @@
+// Treino de Begging no Evermore (OrionUO), 2026-10-15.
+//
+// Como usar: fique numa cidade perto de varios NPCs vendedores (de preferencia joalheiro, mago,
+// alquimista, bardo, armador de navios, arquiteto, corretor) e rode a funcao BeggingTrainer.
+// O script anda de NPC em NPC (nao anda sozinho: os NPCs precisam estar a ate 3 tiles e com linha de visao).
+//
+// Regras do Begging no Evermore (pkg\skills\begging):
+//  - a skill so pode ser usada a cada 10 s;
+//  - cada tentativa de verdade (sucesso ou falha) da chance de subir a skill; quanto mais rico o NPC, mais sobe:
+//      ricos (upper, dificuldade 75): alchemist, appraiser (real estate broker), architect, bard, jeweler, mage, shipwright
+//      medios (middle, 45): armorer, blacksmith, bowyer, butcher, carpenter, healer, herbalist, mapmaker,
+//                           provisioner, scribe, tailor, tinker, weaponsmith...
+//      pobres (poor, 10): baker, banker, barkeep, cook, farmer, fisherman, innkeeper, stablemaster...
+//    Por isso o script prefere os ricos, depois os medios e por ultimo os pobres;
+//  - o mesmo NPC so da de novo para voce 10 min depois de dar (e nao conta como tentativa);
+//  - a bolsa do NPC esvazia com as esmolas e se recupera aos poucos (bolsa vazia tambem nao conta);
+//  - karma negativo: ninguem da nada (cada esmola tira 2 de karma, mas nunca abaixo de 0).
+//  - NPCs com bolsa vazia ou que acabaram de dar ficam de lado por 10 min.
+
+var MsgColor = '0x0030';
+var ErrColor = '0x0026';
+var Humans = '0x0190|0x0191';
+var Range = 3;               // distancia maxima do Begging
+var SkillDelay = 10500;      // 10 s entre usos da skill (+ folga)
+var RestMinutes = 10;        // tempo que um NPC fica de lado
+
+// titulos dos NPCs por riqueza (o nome do NPC termina com "the <titulo>")
+var Upper = /the (jeweler|mage|alchemist|bard|shipwright|architect|real estate broker)$/i;
+var Middle = /the (armorer|blacksmith|bowyer|butcher|carpenter|healer|herbalist|mapmaker|provisioner|scribe|tailor|tinker|weaponsmith|weaver|leatherworker|barber)$/i;
+var AnyNpc = / the /i;
+
+// respostas do NPC que nao contam como tentativa: deixa o NPC de lado por um tempo
+var NoTry = "I already gave thee something|Sorry, gave it all away already|Nope. Gots nothing|Your cohorts cleaned me out|Ain't got nothin'|No' got nothin'|Not much better off|Maybe ye can spare|I can give thee nothing|pockets in this armor|Not while I'm on duty|Perhaps talking to them";
+var BadKarma = 'I will not give money to such as thee|Take off, eh|naughty evildoers';
+
+var resting = {};            // serial -> Orion.Now() ate quando fica de lado
+
+
+function BeggingTrainer()
+{
+	Orion.Print(MsgColor, 'Begging trainer started. Stay near rich NPCs (jeweler, mage, alchemist, bard...).');
+	var tries = 0, idle = 0;
+	while (!Player.Dead())
+	{
+		var npc = PickNpc();
+		if (!npc)
+		{
+			if (idle++ % 6 == 0)
+				Orion.Print(ErrColor, 'No NPC to beg within ' + Range + ' tiles. Walk closer to other NPCs.');
+			Orion.Wait(5000);
+			continue;
+		}
+		idle = 0;
+
+		Orion.ClearJournal();
+		var start = Orion.Now();
+		Orion.UseSkill('Begging');
+		if (!Orion.WaitForTarget(2000))
+		{
+			// skill ainda em espera ou bloqueada
+			Orion.Wait(1000);
+			continue;
+		}
+		Orion.TargetObject(npc.Serial());
+		Orion.Wait(1800);
+
+		if (Orion.InJournal(BadKarma, '', '0', 'any', start))
+		{
+			Orion.Print(ErrColor, 'Your karma is negative: nobody will give you anything. Stopping.');
+			return;
+		}
+		if (Orion.InJournal(NoTry, '', '0', 'any', start))
+			resting[npc.Serial()] = Orion.Now() + RestMinutes * 60000;
+		else
+		{
+			tries++;
+			// deu esmola: o mesmo NPC so da de novo em 10 min
+			if (Orion.InJournal('throws a few coins|You quickly stuff|You miss and the coins', '', '0', 'any', start))
+				resting[npc.Serial()] = Orion.Now() + RestMinutes * 60000;
+			if (tries % 10 == 0)
+				Orion.Print(MsgColor, tries + ' tries. Begging: ' + (Orion.SkillValue('Begging', 'real') / 10));
+		}
+		Orion.Wait(Math.max(0, SkillDelay - (Orion.Now() - start)));
+	}
+	Orion.Print(ErrColor, 'You are dead. Begging trainer stopped.');
+}
+
+// NPC humano a ate Range tiles que nao esteja de lado: rico > medio > qualquer um com titulo
+function PickNpc()
+{
+	var list = Orion.FindTypeEx(Humans, 'any', 'ground', 'mobile|live', Range);
+	var best = null, bestRank = 0;
+	var now = Orion.Now();
+	for (var i = 0; i < list.length; i++)
+	{
+		var m = list[i];
+		if (m.Serial() == Player.Serial() || (resting[m.Serial()] && resting[m.Serial()] > now))
+			continue;
+		var name = m.Name();
+		var rank = Upper.test(name) ? 3 : Middle.test(name) ? 2 : AnyNpc.test(name) ? 1 : 0;
+		if (rank > bestRank)
+		{
+			best = m;
+			bestRank = rank;
+		}
+	}
+	return best;
+}

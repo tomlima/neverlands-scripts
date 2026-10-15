@@ -8,6 +8,7 @@
 Contributions are always welcome!
 
 - Animal Taming
+- Begging (Evermore)
 - Eat Fish 
 - Fishing
 - Jewerely 
